@@ -1,14 +1,43 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:args/args.dart';
 import 'package:collection/collection.dart';
 
 Future<void> main(List<String> arguments) async {
   final poses = <Map<String, dynamic>>[];
   final files = <String>[];
   final temporaryPoses = <Map<String, dynamic>>[];
+  final parser = ArgParser();
+  var isPro = false;
 
-  // TODO: setting input directory from argument
-  final inputDirectory = 'input';
+  var inputDirectory = 'input';
+
+  parser.addFlag(
+    'pro',
+    abbr: 'p',
+    defaultsTo: false,
+    help:
+        'Activate pro mode. The output json will not include interpolated value.\nThis means the input file is treated as just each frame pose.',
+  );
+  parser.addFlag(
+    'help',
+    abbr: 'h',
+    defaultsTo: false,
+    negatable: false,
+    help: 'Show this text.',
+  );
+
+  final parsedArgs = parser.parse(arguments);
+  isPro = parsedArgs['pro'];
+
+  if (parsedArgs['help']) {
+    print(parser.usage);
+    exit(0);
+  }
+
+  if (parsedArgs.rest.isNotEmpty) {
+    inputDirectory = parsedArgs.rest[0];
+  }
 
   var dir = Directory(inputDirectory);
   try {
@@ -34,24 +63,26 @@ Future<void> main(List<String> arguments) async {
         /// 一旦パースした物を保存、前のjsonとの差分を取る。
         temporaryPoses.add(parsed);
 
-        /// Pro mode
-        // poses.add(optimizePose(
-        //     current: parsed, prev: i == 0 ? null : temporaryPoses[i - 1]));
-
-        /// Basic interpolate mode
-        if (i != 0) {
-          final currentFrame =
-              int.tryParse(currentFile.replaceAll(RegExp(r'.+/|.json'), ''));
-          final prevFrame =
-              int.tryParse(files[i - 1].replaceAll(RegExp(r'.+/|.json'), ''));
-          poses.addAll(
-            optimizePoseWithInterpolate(
-              prevFrame: prevFrame == 0 ? prevFrame : prevFrame + 1,
-              currentFrame: currentFrame,
-              prev: temporaryPoses[i - 1],
-              current: parsed,
-            ),
-          );
+        if (isPro) {
+          /// Pro mode
+          poses.add(optimizePose(
+              current: parsed, prev: i == 0 ? null : temporaryPoses[i - 1]));
+        } else {
+          /// Basic interpolate mode
+          if (i != 0) {
+            final currentFrame =
+                int.tryParse(currentFile.replaceAll(RegExp(r'.+/|.json'), ''));
+            final prevFrame =
+                int.tryParse(files[i - 1].replaceAll(RegExp(r'.+/|.json'), ''));
+            poses.addAll(
+              optimizePoseWithInterpolate(
+                prevFrame: prevFrame == 0 ? prevFrame : prevFrame + 1,
+                currentFrame: currentFrame,
+                prev: temporaryPoses[i - 1],
+                current: parsed,
+              ),
+            );
+          }
         }
       });
     }
