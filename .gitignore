@@ -9,5 +9,5 @@ build/
 doc/api/
 
 # test files
-test_pose/
+input/
 pose_animation.json

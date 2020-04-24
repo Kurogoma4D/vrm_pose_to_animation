@@ -3,11 +3,14 @@ import 'dart:io';
 import 'package:collection/collection.dart';
 
 Future<void> main(List<String> arguments) async {
-  var dir = Directory('test_pose');
   final poses = <Map<String, dynamic>>[];
   final files = <String>[];
   final temporaryPoses = <Map<String, dynamic>>[];
 
+  // TODO: setting input directory from argument
+  final inputDirectory = 'input';
+
+  var dir = Directory(inputDirectory);
   try {
     var dirList = dir.list();
 
@@ -22,16 +25,34 @@ Future<void> main(List<String> arguments) async {
     files.sort();
 
     for (var i = 0; i < files.length; i++) {
-      final path = files[i];
+      final currentFile = files[i];
 
-      await File(path).readAsString().then((content) {
+      await File(currentFile).readAsString().then((content) {
         /// ソートしたファイル一覧を参照し、jsonとして読み込む。
         Map<String, dynamic> parsed = jsonDecode(content);
 
         /// 一旦パースした物を保存、前のjsonとの差分を取る。
         temporaryPoses.add(parsed);
-        poses.add(optimizePose(
-            current: parsed, prev: i == 0 ? null : temporaryPoses[i - 1]));
+
+        /// Pro mode
+        // poses.add(optimizePose(
+        //     current: parsed, prev: i == 0 ? null : temporaryPoses[i - 1]));
+
+        /// Basic interpolate mode
+        if (i != 0) {
+          final currentFrame =
+              int.tryParse(currentFile.replaceAll(RegExp(r'.+/|.json'), ''));
+          final prevFrame =
+              int.tryParse(files[i - 1].replaceAll(RegExp(r'.+/|.json'), ''));
+          poses.addAll(
+            optimizePoseWithInterpolate(
+              prevFrame: prevFrame == 0 ? prevFrame : prevFrame + 1,
+              currentFrame: currentFrame,
+              prev: temporaryPoses[i - 1],
+              current: parsed,
+            ),
+          );
+        }
       });
     }
 
@@ -59,6 +80,53 @@ Map<String, dynamic> optimizePose(
       store[key] = current[key];
     }
   });
+
+  return store;
+}
+
+/// パースしたjsonについて、補間しつつ差分を取り保存する関数
+List<Map<String, dynamic>> optimizePoseWithInterpolate(
+    {int prevFrame,
+    int currentFrame,
+    Map<String, dynamic> current,
+    Map<String, dynamic> prev}) {
+  final interpolated = <String, Map<String, dynamic>>{};
+  const listEquality = ListEquality();
+
+  assert(current != null);
+  assert(prev != null);
+
+  current.keys.forEach((key) {
+    if (!listEquality.equals(current[key]['rotation'], prev[key]['rotation'])) {
+      final cRot = current[key]['rotation'];
+      final pRot = prev[key]['rotation'];
+      for (var i = prevFrame; i <= currentFrame; i++) {
+        final frame = i.toString();
+        if (interpolated[frame] == null) {
+          interpolated[frame] = {};
+        }
+        if (interpolated[frame][key] == null) {
+          interpolated[frame][key] = {};
+        }
+        interpolated[frame][key]['rotation'] = [
+          (cRot[0] - pRot[0]) * (i - prevFrame) / (currentFrame - prevFrame) +
+              pRot[0],
+          (cRot[1] - pRot[1]) * (i - prevFrame) / (currentFrame - prevFrame) +
+              pRot[1],
+          (cRot[2] - pRot[2]) * (i - prevFrame) / (currentFrame - prevFrame) +
+              pRot[2],
+          (cRot[3] - pRot[3]) * (i - prevFrame) / (currentFrame - prevFrame) +
+              pRot[3],
+        ];
+      }
+    }
+  });
+
+  final sortedKeys = interpolated.keys.toList()..sort();
+  final store = <Map<String, dynamic>>[];
+  for (var key in sortedKeys) {
+    store.add(interpolated[key]);
+  }
 
   return store;
 }
