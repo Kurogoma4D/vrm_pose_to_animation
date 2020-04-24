@@ -80,6 +80,7 @@ Future<void> main(List<String> arguments) async {
                 currentFrame: currentFrame,
                 prev: temporaryPoses[i - 1],
                 current: parsed,
+                isFirst: prevFrame == 0,
               ),
             );
           }
@@ -120,25 +121,36 @@ List<Map<String, dynamic>> optimizePoseWithInterpolate(
     {int prevFrame,
     int currentFrame,
     Map<String, dynamic> current,
-    Map<String, dynamic> prev}) {
+    Map<String, dynamic> prev,
+    bool isFirst}) {
   final interpolated = <String, Map<String, dynamic>>{};
   const listEquality = ListEquality();
 
   assert(current != null);
   assert(prev != null);
 
-  current.keys.forEach((key) {
-    if (!listEquality.equals(current[key]['rotation'], prev[key]['rotation'])) {
+  /// 各フレームごとの処理
+  for (var i = prevFrame; i <= currentFrame; i++) {
+    final frame = i.toString();
+
+    /// ボーンの名前ごとの処理
+    current.keys.forEach((key) {
       final cRot = current[key]['rotation'];
       final pRot = prev[key]['rotation'];
-      for (var i = prevFrame; i <= currentFrame; i++) {
-        final frame = i.toString();
-        if (interpolated[frame] == null) {
-          interpolated[frame] = {};
-        }
-        if (interpolated[frame][key] == null) {
-          interpolated[frame][key] = {};
-        }
+
+      if (isFirst && i == prevFrame) {
+        /// 0フレーム目の処理の場合
+        /// rotationをそのまま記録する
+        /// interpolatedにフレームを記録するMap、ボーンの名前を記録するMapを作成
+        interpolated[frame] ??= {};
+        interpolated[frame][key] ??= {};
+        interpolated[frame][key]['rotation'] = [...pRot];
+      } else if (!listEquality.equals(cRot, pRot)) {
+        /// 差分がある場合
+        /// 差分を線形補間する
+        /// interpolatedにフレームを記録するMap、ボーンの名前を記録するMapを作成
+        interpolated[frame] ??= {};
+        interpolated[frame][key] ??= {};
         interpolated[frame][key]['rotation'] = [
           (cRot[0] - pRot[0]) * (i - prevFrame) / (currentFrame - prevFrame) +
               pRot[0],
@@ -150,8 +162,8 @@ List<Map<String, dynamic>> optimizePoseWithInterpolate(
               pRot[3],
         ];
       }
-    }
-  });
+    });
+  }
 
   final sortedKeys = interpolated.keys.toList()..sort();
   final store = <Map<String, dynamic>>[];
